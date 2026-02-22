@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Debrief{% if date %} — {{ date }}{% endif %}</title>
+  <style>
+    /* ------------------------------------------------------------------ */
+    /* Reset & base                                                         */
+    /* ------------------------------------------------------------------ */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Page setup (WeasyPrint)                                              */
+    /* ------------------------------------------------------------------ */
+    @page {
+      size: A4;
+      margin: 22mm 20mm 22mm 20mm;
+
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #888888;
+      }
+    }
+
+    @page :first {
+      @bottom-center {
+        content: "";
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Header / cover block                                                 */
+    /* ------------------------------------------------------------------ */
+    .cover {
+      border-bottom: 3px solid #2c3e50;
+      padding-bottom: 18pt;
+      margin-bottom: 24pt;
+    }
+
+    .cover__eyebrow {
+      font-size: 7.5pt;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #7f8c8d;
+      margin-bottom: 4pt;
+    }
+
+    .cover__title {
+      font-size: 26pt;
+      font-weight: 800;
+      color: #2c3e50;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+      margin-bottom: 14pt;
+    }
+
+    .cover__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6pt 24pt;
+    }
+
+    .cover__meta-item {
+      font-size: 9.5pt;
+      color: #34495e;
+    }
+
+    .cover__meta-item strong {
+      color: #1a1a1a;
+    }
+
+    .cover__speakers {
+      margin-top: 10pt;
+    }
+
+    .cover__speakers-label {
+      font-size: 8pt;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #7f8c8d;
+      margin-bottom: 5pt;
+    }
+
+    .speaker-pill {
+      display: inline-block;
+      background: #eaf0fb;
+      color: #2c3e50;
+      font-size: 8.5pt;
+      font-weight: 600;
+      padding: 2pt 7pt;
+      border-radius: 20pt;
+      margin: 2pt 3pt 2pt 0;
+      border: 1px solid #c5d5ee;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Section chrome                                                       */
+    /* ------------------------------------------------------------------ */
+    .section {
+      margin-bottom: 28pt;
+    }
+
+    .section + .section {
+      border-top: 1px solid #e0e0e0;
+      padding-top: 22pt;
+    }
+
+    .section__header {
+      background: #f4f6f7;
+      border-left: 4px solid #2c3e50;
+      padding: 5pt 10pt;
+      margin-bottom: 14pt;
+      border-radius: 0 3pt 3pt 0;
+    }
+
+    .section__title {
+      font-size: 11pt;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #2c3e50;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Summary                                                              */
+    /* ------------------------------------------------------------------ */
+    .summary__body p {
+      margin-bottom: 8pt;
+      color: #2c2c2c;
+    }
+
+    .summary__body p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Action items                                                         */
+    /* ------------------------------------------------------------------ */
+    .task-list {
+      list-style: none;
+    }
+
+    .task-list__item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8pt;
+      padding: 6pt 0;
+      border-bottom: 1px dotted #dde1e5;
+    }
+
+    .task-list__item:last-child {
+      border-bottom: none;
+    }
+
+    .task-checkbox {
+      /* WeasyPrint renders borders reliably */
+      display: inline-block;
+      width: 10pt;
+      height: 10pt;
+      min-width: 10pt;
+      border: 1.5px solid #7f8c8d;
+      border-radius: 2pt;
+      margin-top: 1.5pt;
+      background: #ffffff;
+    }
+
+    .task-content {
+      flex: 1;
+    }
+
+    .task-description {
+      font-size: 10pt;
+      color: #1a1a1a;
+    }
+
+    .task-assignee {
+      font-size: 8.5pt;
+      color: #7f8c8d;
+      margin-top: 1pt;
+    }
+
+    .task-assignee strong {
+      color: #2980b9;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Key concepts                                                         */
+    /* ------------------------------------------------------------------ */
+    .concept-list {
+      list-style: none;
+      columns: 2;
+      column-gap: 20pt;
+    }
+
+    .concept-list__item {
+      break-inside: avoid;
+      padding: 3pt 0 3pt 14pt;
+      position: relative;
+      font-size: 10pt;
+      color: #2c2c2c;
+    }
+
+    .concept-list__item::before {
+      content: "\2022";
+      position: absolute;
+      left: 4pt;
+      color: #2c3e50;
+      font-size: 11pt;
+      line-height: 1.4;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Full transcript — always starts on a new page                       */
+    /* ------------------------------------------------------------------ */
+    .section--transcript {
+      page-break-before: always;
+    }
+
+    .transcript-entry {
+      margin-bottom: 10pt;
+      padding-bottom: 10pt;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .transcript-entry:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .transcript-entry__meta {
+      display: flex;
+      align-items: baseline;
+      gap: 6pt;
+      margin-bottom: 3pt;
+    }
+
+    .transcript-entry__timestamp {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 8.5pt;
+      color: #95a5a6;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .transcript-entry__speaker {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #2c3e50;
+    }
+
+    .transcript-entry__text {
+      font-size: 9.5pt;
+      color: #333333;
+      margin-left: 72pt;   /* indent under speaker name */
+      line-height: 1.55;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Screenshots                                                          */
+    /* ------------------------------------------------------------------ */
+    .screenshot-block {
+      margin: 10pt 0 12pt 0;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+
+    .screenshot-block img {
+      max-width: 80%;
+      height: auto;
+      border: 1px solid #d0d5db;
+      border-radius: 4pt;
+      box-shadow: 0 1pt 4pt rgba(0, 0, 0, 0.10);
+    }
+
+    .screenshot-caption {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 7.5pt;
+      color: #95a5a6;
+      margin-top: 4pt;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Utilities                                                            */
+    /* ------------------------------------------------------------------ */
+    .text-muted {
+      color: #7f8c8d;
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================================ -->
+  <!-- HEADER                                                             -->
+  <!-- ================================================================ -->
+  <header class="cover">
+    <p class="cover__eyebrow">Confidential &mdash; Internal Use Only</p>
+    <h1 class="cover__title">Debrief</h1>
+
+    <div class="cover__meta">
+      {% if date %}
+      <span class="cover__meta-item">
+        <strong>Date:</strong> {{ date }}
+      </span>
+      {% endif %}
+
+      {% if duration_formatted %}
+      <span class="cover__meta-item">
+        <strong>Duration:</strong> {{ duration_formatted }}
+      </span>
+      {% endif %}
+    </div>
+
+    {% if speakers %}
+    <div class="cover__speakers">
+      <p class="cover__speakers-label">Participants</p>
+      {% for speaker in speakers %}
+        <span class="speaker-pill">{{ speaker }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </header>
+
+  <!-- ================================================================ -->
+  <!-- SUMMARY                                                            -->
+  <!-- ================================================================ -->
+  {% if summary %}
+  <section class="section section--summary">
+    <div class="section__header">
+      <h2 class="section__title">Summary</h2>
+    </div>
+    <div class="summary__body">
+      {% for paragraph in summary_paragraphs %}
+        <p>{{ paragraph }}</p>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ================================================================ -->
+  <!-- ACTION ITEMS                                                       -->
+  <!-- ================================================================ -->
+  {% if tasks %}
+  <section class="section section--tasks">
+    <div class="section__header">
+      <h2 class="section__title">Action Items</h2>
+    </div>
+    <ul class="task-list">
+      {% for task in tasks %}
+      <li class="task-list__item">
+        <span class="task-checkbox" aria-hidden="true"></span>
+        <div class="task-content">
+          <div class="task-description">{{ task.description }}</div>
+          {% if task.assignee %}
+          <div class="task-assignee">Assigned to: <strong>{{ task.assignee }}</strong></div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <!-- ================================================================ -->
+  <!-- KEY CONCEPTS                                                       -->
+  <!-- ================================================================ -->
+  {% if concepts %}
+  <section class="section section--concepts">
+    <div class="section__header">
+      <h2 class="section__title">Key Concepts</h2>
+    </div>
+    <ul class="concept-list">
+      {% for concept in concepts %}
+      <li class="concept-list__item">{{ concept }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <!-- ================================================================ -->
+  <!-- FULL TRANSCRIPT                                                    -->
+  <!-- ================================================================ -->
+  {% if entries %}
+  <section class="section section--transcript">
+    <div class="section__header">
+      <h2 class="section__title">Full Transcript</h2>
+    </div>
+
+    {% for entry in entries %}
+    <article class="transcript-entry">
+      <div class="transcript-entry__meta">
+        <span class="transcript-entry__timestamp">[{{ entry.timestamp }}]</span>
+        <span class="transcript-entry__speaker">{{ entry.speaker }}:</span>
+      </div>
+      <p class="transcript-entry__text">{{ entry.text }}</p>
+
+      {% if entry.screenshot_path %}
+      <div class="screenshot-block">
+        <img
+          src="{{ entry.screenshot_path }}"
+          alt="Screenshot at {{ entry.timestamp }}"
+        />
+        <p class="screenshot-caption">Screenshot @ {{ entry.timestamp }}</p>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+
+  </section>
+  {% endif %}
+
+</body>
+</html>

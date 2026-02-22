@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "debrief"
+version = "0.1.0"
+description = "CLI debrief tool — transcribe, summarize, and generate PDF reports from recordings"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "faster-whisper>=1.0",
+    "pyannote.audio>=3.1",
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "ollama>=0.4",
+    "weasyprint>=62",
+    "Jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "Pillow>=10.0",
+]
+
+[project.scripts]
+debrief = "debrief.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/debrief"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests that require GPU/models/external services (deselect with '-m \"not slow\"')",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

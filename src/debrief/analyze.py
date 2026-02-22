@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -58,6 +57,32 @@ class Analysis:
     summary: str
     tasks: list[Task] = field(default_factory=list)
     concepts: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _LLMCall:
+    """Internal: captures an Ollama chat response with token/timing stats."""
+
+    content: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    eval_duration_seconds: float | None = None
+    total_duration_seconds: float | None = None
+    load_duration_seconds: float | None = None
+
+
+@dataclass
+class AnalysisResult:
+    """Public wrapper around :class:`Analysis` with pipeline metadata."""
+
+    analysis: Analysis
+    json_parsed_cleanly: bool
+    chunk_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    eval_duration_seconds: float
+    total_duration_seconds: float
+    load_duration_seconds: float
 
 
 # ---------------------------------------------------------------------------
@@ -108,27 +133,13 @@ Chunk analyses:
 
 
 def _estimate_tokens(text: str) -> int:
-    """Estimate token count for *text* using a words-to-tokens heuristic.
-
-    Args:
-        text: Arbitrary text string.
-
-    Returns:
-        Estimated token count (int).
-    """
+    """Estimate token count for *text* using a words-to-tokens heuristic."""
     words = len(text.split())
     return int(words * TOKENS_PER_WORD)
 
 
 def _format_transcript(segments: list[SegmentLike]) -> str:
-    """Format transcript segments as ``[Speaker]: text`` lines.
-
-    Args:
-        segments: Ordered list of transcript segments.
-
-    Returns:
-        Multi-line string with one ``[Speaker]: text`` entry per segment.
-    """
+    """Format transcript segments as ``[Speaker]: text`` lines."""
     lines: list[str] = []
     for seg in segments:
         speaker = seg.speaker or "Unknown"
@@ -140,18 +151,7 @@ def _split_into_chunks(
     segments: list[SegmentLike],
     token_limit: int = CHUNK_TOKEN_LIMIT,
 ) -> list[list[SegmentLike]]:
-    """Split segments into chunks whose estimated token count stays under *token_limit*.
-
-    Chunks are broken at segment boundaries (never mid-sentence). Each chunk
-    contains at least one segment, even if a single segment exceeds the limit.
-
-    Args:
-        segments: Full ordered list of transcript segments.
-        token_limit: Maximum estimated tokens per chunk.
-
-    Returns:
-        List of segment groups, each group being a list of segments.
-    """
+    """Split segments into chunks whose estimated token count stays under *token_limit*."""
     chunks: list[list[SegmentLike]] = []
     current_chunk: list[SegmentLike] = []
     current_tokens: int = 0
@@ -173,56 +173,29 @@ def _split_into_chunks(
 
 
 def _strip_code_fences(text: str) -> str:
-    """Remove markdown code fences from *text*.
-
-    Handles both `` ```json `` and bare `` ``` `` variants.
-
-    Args:
-        text: Raw LLM response text.
-
-    Returns:
-        Text with leading/trailing code fences removed and stripped.
-    """
+    """Remove markdown code fences from *text*."""
     text = text.strip()
-    # Remove opening fence (```json or ```)
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    # Remove closing fence
     text = re.sub(r"\s*```\s*$", "", text)
     return text.strip()
 
 
 def _extract_json_from_text(text: str) -> str | None:
-    """Attempt to locate a JSON object inside *text* using a regex.
-
-    Args:
-        text: Arbitrary string that may contain a JSON object.
-
-    Returns:
-        The matched JSON substring, or ``None`` if no object is found.
-    """
+    """Attempt to locate a JSON object inside *text* using a regex."""
     match = re.search(r"\{.*\}", text, re.DOTALL)
     return match.group(0) if match else None
 
 
-def _parse_llm_response(raw: str) -> dict[str, Any]:
+def _parse_llm_response(raw: str) -> tuple[dict[str, Any], bool]:
     """Parse a JSON object from a raw LLM response string.
 
-    Attempts three strategies in order:
-    1. Strip code fences and parse directly.
-    2. Regex-extract a ``{...}`` block and parse.
-    3. Return a fallback dict with the raw text as ``summary``.
-
-    Args:
-        raw: Raw string returned by the Ollama model.
-
     Returns:
-        Parsed dict with at least ``summary``, ``tasks``, and ``concepts``
-        keys (empty lists for tasks/concepts on fallback).
+        A tuple of (parsed_dict, json_parsed_cleanly).
     """
     # Strategy 1: strip fences and parse
     cleaned = _strip_code_fences(raw)
     try:
-        return json.loads(cleaned)
+        return json.loads(cleaned), True
     except json.JSONDecodeError:
         pass
 
@@ -230,25 +203,16 @@ def _parse_llm_response(raw: str) -> dict[str, Any]:
     extracted = _extract_json_from_text(raw)
     if extracted:
         try:
-            return json.loads(extracted)
+            return json.loads(extracted), True
         except json.JSONDecodeError:
             pass
 
     # Strategy 3: fallback
-    return {"summary": raw.strip(), "tasks": [], "concepts": []}
+    return {"summary": raw.strip(), "tasks": [], "concepts": []}, False
 
 
 def _dict_to_analysis(data: dict[str, Any]) -> Analysis:
-    """Convert a parsed LLM response dict into an :class:`Analysis` object.
-
-    Missing or malformed fields are replaced with safe defaults.
-
-    Args:
-        data: Dict with ``summary``, ``tasks``, and ``concepts`` keys.
-
-    Returns:
-        Populated :class:`Analysis` instance.
-    """
+    """Convert a parsed LLM response dict into an :class:`Analysis` object."""
     summary = str(data.get("summary", "")).strip()
 
     tasks: list[Task] = []
@@ -270,62 +234,81 @@ def _dict_to_analysis(data: dict[str, Any]) -> Analysis:
     return Analysis(summary=summary, tasks=tasks, concepts=concepts)
 
 
-def _call_ollama(model: str, prompt: str) -> str:
-    """Send *prompt* to the Ollama model and return the response text.
+def _nanos_to_seconds(nanos: int | None) -> float | None:
+    """Convert nanoseconds to seconds, returning None if input is None."""
+    if nanos is None:
+        return None
+    return nanos / 1_000_000_000
 
-    Args:
-        model: Ollama model name (e.g. ``"mistral"``).
-        prompt: Full prompt string to send.
 
-    Returns:
-        Response content string from the model.
-
-    Raises:
-        ollama.ResponseError: If the Ollama API returns an error.
-    """
+def _call_ollama(model: str, prompt: str) -> _LLMCall:
+    """Send *prompt* to the Ollama model and return an :class:`_LLMCall`."""
     response = ollama.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response["message"]["content"]
+    return _LLMCall(
+        content=response["message"]["content"],
+        prompt_tokens=response.get("prompt_eval_count"),
+        completion_tokens=response.get("eval_count"),
+        eval_duration_seconds=_nanos_to_seconds(response.get("eval_duration")),
+        total_duration_seconds=_nanos_to_seconds(response.get("total_duration")),
+        load_duration_seconds=_nanos_to_seconds(response.get("load_duration")),
+    )
+
+
+def _accumulate_stats(calls: list[_LLMCall]) -> dict[str, float]:
+    """Sum token and timing stats across multiple LLM calls."""
+    prompt_tokens = 0
+    completion_tokens = 0
+    eval_duration = 0.0
+    total_duration = 0.0
+    load_duration = 0.0
+    for call in calls:
+        prompt_tokens += call.prompt_tokens or 0
+        completion_tokens += call.completion_tokens or 0
+        eval_duration += call.eval_duration_seconds or 0.0
+        total_duration += call.total_duration_seconds or 0.0
+        load_duration += call.load_duration_seconds or 0.0
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "eval_duration_seconds": eval_duration,
+        "total_duration_seconds": total_duration,
+        "load_duration_seconds": load_duration,
+    }
 
 
 def _analyze_chunk(
     segments: list[SegmentLike],
     model: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bool, _LLMCall]:
     """Run a single-chunk analysis against the LLM.
 
-    Args:
-        segments: Segments that make up this chunk.
-        model: Ollama model name.
-
     Returns:
-        Parsed dict with ``summary``, ``tasks``, and ``concepts`` keys.
+        Tuple of (parsed_dict, json_parsed_cleanly, llm_call).
     """
     transcript_text = _format_transcript(segments)
     prompt = _CHUNK_PROMPT.format(transcript_text=transcript_text)
-    raw = _call_ollama(model, prompt)
-    return _parse_llm_response(raw)
+    call = _call_ollama(model, prompt)
+    data, clean = _parse_llm_response(call.content)
+    return data, clean, call
 
 
 def _merge_chunks(
     chunk_results: list[dict[str, Any]],
     model: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bool, _LLMCall]:
     """Ask the LLM to merge multiple chunk analyses into one cohesive result.
 
-    Args:
-        chunk_results: List of per-chunk parsed dicts.
-        model: Ollama model name.
-
     Returns:
-        Merged dict with ``summary``, ``tasks``, and ``concepts`` keys.
+        Tuple of (merged_dict, json_parsed_cleanly, llm_call).
     """
     json_chunks = json.dumps(chunk_results, indent=2, ensure_ascii=False)
     prompt = _MERGE_PROMPT.format(json_chunks=json_chunks)
-    raw = _call_ollama(model, prompt)
-    return _parse_llm_response(raw)
+    call = _call_ollama(model, prompt)
+    data, clean = _parse_llm_response(call.content)
+    return data, clean, call
 
 
 # ---------------------------------------------------------------------------
@@ -335,62 +318,77 @@ def _merge_chunks(
 
 def analyze(
     segments: list,
-    model: str = "mistral",
+    model: str = "hf.co/Qwen/Qwen3-14B-GGUF:Q4_K_M",
     duration: float = 0.0,  # noqa: ARG001 — reserved for future use
-) -> Analysis:
-    """Analyse a transcript and return a structured :class:`Analysis`.
-
-    Sends transcript text to a local Ollama model and extracts a high-level
-    summary, action items with optional assignees, and key concepts discussed.
-
-    For short transcripts (estimated tokens < 6 000) the analysis is performed
-    in a single LLM call. For longer transcripts the transcript is split into
-    chunks of ~6 000 estimated tokens each; each chunk is analysed separately
-    and a final merge pass synthesises the results.
-
-    Progress messages are printed to *stderr* so they do not pollute stdout.
+) -> AnalysisResult:
+    """Analyse a transcript and return an :class:`AnalysisResult`.
 
     Args:
-        segments: Ordered list of transcript segment objects. Each must expose
-            ``start`` (float), ``end`` (float), ``speaker`` (str), and
-            ``text`` (str) attributes — matching :class:`SegmentLike`.
-        model: Name of the Ollama model to use (default ``"mistral"``).
-        duration: Total duration in seconds. Currently reserved for future
-            use (e.g. cost estimation or progress display).
+        segments: Ordered list of transcript segment objects.
+        model: Name of the Ollama model to use.
+        duration: Total duration in seconds (reserved for future use).
 
     Returns:
-        An :class:`Analysis` with ``summary``, ``tasks``, and ``concepts``
-        populated from the LLM response. On JSON parse failure the raw
-        response is placed in ``summary`` and the other fields are empty.
+        An :class:`AnalysisResult` wrapping the :class:`Analysis` plus
+        metadata about the LLM calls (token counts, timing, parse quality).
 
     Raises:
         ollama.ResponseError: If the Ollama API returns an error response.
     """
     if not segments:
-        return Analysis(summary="No transcript segments provided.", tasks=[], concepts=[])
+        return AnalysisResult(
+            analysis=Analysis(summary="No transcript segments provided.", tasks=[], concepts=[]),
+            json_parsed_cleanly=True,
+            chunk_count=0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            eval_duration_seconds=0.0,
+            total_duration_seconds=0.0,
+            load_duration_seconds=0.0,
+        )
 
     full_transcript = _format_transcript(segments)
     total_tokens = _estimate_tokens(full_transcript)
 
+    all_calls: list[_LLMCall] = []
+    all_clean = True
+
     if total_tokens <= SINGLE_PASS_TOKEN_LIMIT:
-        print("Analyzing transcript...", file=sys.stderr)
-        data = _analyze_chunk(segments, model)
-        return _dict_to_analysis(data)
+        data, clean, call = _analyze_chunk(segments, model)
+        all_calls.append(call)
+        all_clean = clean
+        chunk_count = 1
+        analysis = _dict_to_analysis(data)
+    else:
+        # Multi-chunk path
+        chunks = _split_into_chunks(segments, token_limit=CHUNK_TOKEN_LIMIT)
+        chunk_count = len(chunks)
 
-    # Multi-chunk path
-    chunks = _split_into_chunks(segments, token_limit=CHUNK_TOKEN_LIMIT)
-    total_chunks = len(chunks)
+        chunk_results: list[dict[str, Any]] = []
+        for chunk in chunks:
+            data, clean, call = _analyze_chunk(chunk, model)
+            all_calls.append(call)
+            if not clean:
+                all_clean = False
+            chunk_results.append(data)
 
-    chunk_results: list[dict[str, Any]] = []
-    for idx, chunk in enumerate(chunks, start=1):
-        print(f"Analyzing chunk {idx}/{total_chunks}...", file=sys.stderr)
-        result = _analyze_chunk(chunk, model)
-        chunk_results.append(result)
+        if chunk_count == 1:
+            analysis = _dict_to_analysis(chunk_results[0])
+        else:
+            merged, clean, call = _merge_chunks(chunk_results, model)
+            all_calls.append(call)
+            if not clean:
+                all_clean = False
+            analysis = _dict_to_analysis(merged)
 
-    if total_chunks == 1:
-        # No merge needed — single chunk that happened to split cleanly
-        return _dict_to_analysis(chunk_results[0])
-
-    print("Merging chunk analyses...", file=sys.stderr)
-    merged = _merge_chunks(chunk_results, model)
-    return _dict_to_analysis(merged)
+    stats = _accumulate_stats(all_calls)
+    return AnalysisResult(
+        analysis=analysis,
+        json_parsed_cleanly=all_clean,
+        chunk_count=chunk_count,
+        prompt_tokens=int(stats["prompt_tokens"]),
+        completion_tokens=int(stats["completion_tokens"]),
+        eval_duration_seconds=stats["eval_duration_seconds"],
+        total_duration_seconds=stats["total_duration_seconds"],
+        load_duration_seconds=stats["load_duration_seconds"],
+    )

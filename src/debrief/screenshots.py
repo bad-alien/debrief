@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -263,12 +262,7 @@ def extract_screenshots(
     # ------------------------------------------------------------------
     # Guard: audio-only input
     # ------------------------------------------------------------------
-    print("debrief/screenshots: probing media for video streams...", file=sys.stderr)
     if not _has_video_stream(video_path):
-        print(
-            "debrief/screenshots: no video stream found — skipping screenshot extraction.",
-            file=sys.stderr,
-        )
         return []
 
     # ------------------------------------------------------------------
@@ -285,24 +279,12 @@ def extract_screenshots(
             candidates.append((timestamp, trigger_text))
 
     if not candidates:
-        print("debrief/screenshots: no visual-reference triggers detected.", file=sys.stderr)
         return []
-
-    print(
-        f"debrief/screenshots: {len(candidates)} trigger(s) found before deduplication.",
-        file=sys.stderr,
-    )
 
     # ------------------------------------------------------------------
     # Deduplicate triggers within the 3-second window
     # ------------------------------------------------------------------
     unique_candidates = _deduplicate_timestamps(candidates)
-
-    print(
-        f"debrief/screenshots: {len(unique_candidates)} unique frame(s) to extract "
-        f"after deduplication.",
-        file=sys.stderr,
-    )
 
     # ------------------------------------------------------------------
     # Ensure output directory exists
@@ -318,27 +300,11 @@ def extract_screenshots(
         filename = f"screenshot_{index:03d}_{timestamp:.3f}s.jpg"
         output_path = output_dir / filename
 
-        print(
-            f"debrief/screenshots: [{index + 1}/{len(unique_candidates)}] "
-            f"extracting frame at {timestamp:.3f}s  ({trigger_text!r}) -> {output_path}",
-            file=sys.stderr,
-        )
-
         try:
             _extract_frame(video_path, timestamp, output_path)
         except FileNotFoundError:
-            print(
-                "debrief/screenshots: ERROR — ffmpeg not found on PATH; "
-                "install ffmpeg and retry.",
-                file=sys.stderr,
-            )
             raise
-        except subprocess.CalledProcessError as exc:
-            print(
-                f"debrief/screenshots: WARNING — ffmpeg failed for timestamp "
-                f"{timestamp:.3f}s (exit {exc.returncode}); skipping.",
-                file=sys.stderr,
-            )
+        except subprocess.CalledProcessError:
             continue
 
         screenshots.append(
@@ -349,8 +315,4 @@ def extract_screenshots(
             )
         )
 
-    print(
-        f"debrief/screenshots: done — {len(screenshots)} screenshot(s) saved to {output_dir}.",
-        file=sys.stderr,
-    )
     return screenshots

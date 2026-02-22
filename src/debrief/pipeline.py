@@ -14,12 +14,15 @@ from __future__ import annotations
 import shutil
 import sys
 import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from debrief.transcribe import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, transcribe
 from debrief.screenshots import extract_screenshots
 from debrief.analyze import analyze
 from debrief.pdf import generate_pdf
+from debrief.metadata import OllamaStats, RunMetadata, StepTiming
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +30,8 @@ from debrief.pdf import generate_pdf
 # ---------------------------------------------------------------------------
 
 SUPPORTED_EXTENSIONS: frozenset[str] = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+
+DEFAULT_MODEL: str = "hf.co/Qwen/Qwen3-14B-GGUF:Q4_K_M"
 
 
 # ---------------------------------------------------------------------------
@@ -40,15 +45,7 @@ def _print_err(message: str) -> None:
 
 
 def _validate_input(input_path: Path) -> None:
-    """Raise informative errors if the input file is unusable.
-
-    Args:
-        input_path: Path to the recording file.
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        ValueError: If the file extension is not supported.
-    """
+    """Raise informative errors if the input file is unusable."""
     if not input_path.exists():
         raise FileNotFoundError(
             f"Recording not found: {input_path}\n"
@@ -65,24 +62,10 @@ def _validate_input(input_path: Path) -> None:
 
 
 def _resolve_output_path(input_path: Path, output_path: str | Path | None) -> Path:
-    """Determine the final PDF output path.
-
-    If *output_path* is provided it is used as-is.  Otherwise the output is
-    placed in a ``debriefs/`` directory relative to the current working
-    directory with the input file's stem suffixed by ``_debrief`` and a
-    ``.pdf`` extension.
-
-    Args:
-        input_path: The recording file path.
-        output_path: Caller-supplied output path, or None.
-
-    Returns:
-        Resolved output :class:`Path`.
-    """
+    """Determine the final PDF output path."""
     if output_path is not None:
         return Path(output_path)
 
-    # Default: place output in debriefs/ relative to the current working directory
     debriefs_dir = Path.cwd() / "debriefs"
     debriefs_dir.mkdir(parents=True, exist_ok=True)
     return debriefs_dir / f"{input_path.stem}_debrief.pdf"
@@ -96,37 +79,15 @@ def _resolve_output_path(input_path: Path, output_path: str | Path | None) -> Pa
 def run_pipeline(
     input_path: str | Path,
     speakers: list[str] | None = None,
-    model: str = "mistral",
+    model: str = DEFAULT_MODEL,
     whisper_model: str = "large-v3",
     output_path: str | Path | None = None,
     device: str = "auto",
-) -> Path:
-    """Run the complete debrief pipeline and return the PDF path.
-
-    Steps:
-
-    1. Validate the input file (exists, supported extension).
-    2. Create a temporary directory for intermediate files.
-    3. Transcribe the recording with Whisper + pyannote diarization.
-    4. Extract representative screenshots from video frames.
-    5. Analyse the transcript with the requested Ollama model.
-    6. Render a PDF report and write it to *output_path*.
-    7. Remove the temporary directory (WeasyPrint embeds images, so the
-       temp dir is safe to delete after the PDF has been written).
-
-    Args:
-        input_path: Path to the audio or video recording.
-        speakers: Optional ordered list of speaker display names.  Maps
-            index-by-index onto pyannote's SPEAKER_00, SPEAKER_01, … labels.
-        model: Ollama model identifier used for summarisation and task
-            extraction (default: ``"mistral"``).
-        whisper_model: faster-whisper model variant (default: ``"large-v3"``).
-        output_path: Destination path for the generated PDF.  Defaults to
-            ``debriefs/<input_stem>_debrief.pdf``.
-        device: Compute device — ``"cpu"``, ``"cuda"``, or ``"auto"``.
+) -> tuple[Path, RunMetadata]:
+    """Run the complete debrief pipeline and return the PDF path and metadata.
 
     Returns:
-        The :class:`Path` of the written PDF report.
+        A two-tuple of (pdf_path, run_metadata).
 
     Raises:
         FileNotFoundError: If the input file or ffmpeg/ffprobe cannot be found.
@@ -136,47 +97,42 @@ def run_pipeline(
     """
     input_path = Path(input_path)
     temp_dir: Path | None = None
+    started_at = datetime.now(timezone.utc).isoformat()
+    wall_start = time.monotonic()
+    steps: list[StepTiming] = []
 
     try:
-        # ------------------------------------------------------------------
         # Step 1: Validate input
-        # ------------------------------------------------------------------
         _validate_input(input_path)
-
         resolved_output = _resolve_output_path(input_path, output_path)
 
-        # ------------------------------------------------------------------
-        # Step 2: Create temp directory for intermediate files
-        # ------------------------------------------------------------------
+        # Step 2: Create temp directory
         temp_dir = Path(tempfile.mkdtemp(prefix="debrief_"))
 
-        # ------------------------------------------------------------------
         # Step 3: Transcribe
-        # ------------------------------------------------------------------
-        _print_err("Step 1/4  Transcribing recording...")
+        t0 = time.monotonic()
         segments, duration = transcribe(
             input_path,
             speakers=speakers,
             model_size=whisper_model,
             device=device,
         )
+        steps.append(StepTiming(name="Transcribe", duration_seconds=time.monotonic() - t0))
 
-        # ------------------------------------------------------------------
         # Step 4: Extract screenshots
-        # ------------------------------------------------------------------
-        _print_err("Step 2/4  Extracting screenshots...")
+        t0 = time.monotonic()
         screenshots = extract_screenshots(input_path, segments, temp_dir)
+        steps.append(StepTiming(name="Screenshots", duration_seconds=time.monotonic() - t0))
 
-        # ------------------------------------------------------------------
         # Step 5: Analyse transcript
-        # ------------------------------------------------------------------
-        _print_err("Step 3/4  Analysing transcript with Ollama...")
-        analysis = analyze(segments, model, duration)
+        t0 = time.monotonic()
+        result = analyze(segments, model, duration)
+        steps.append(StepTiming(name="Analyze", duration_seconds=time.monotonic() - t0))
 
-        # ------------------------------------------------------------------
+        analysis = result.analysis
+
         # Step 6: Generate PDF
-        # ------------------------------------------------------------------
-        _print_err("Step 4/4  Generating PDF report...")
+        t0 = time.monotonic()
         pdf_path = generate_pdf(
             resolved_output,
             analysis.summary,
@@ -187,12 +143,36 @@ def run_pipeline(
             duration,
             speakers or [],
         )
+        steps.append(StepTiming(name="Generate PDF", duration_seconds=time.monotonic() - t0))
 
-        _print_err(f"\nDone! Report saved to {pdf_path}")
-        return pdf_path
+        total_wall = time.monotonic() - wall_start
+
+        metadata = RunMetadata(
+            started_at=started_at,
+            total_wall_seconds=total_wall,
+            whisper_model=whisper_model,
+            llm_model=model,
+            transcript_duration_seconds=duration,
+            segment_count=len(segments),
+            speaker_count=len({s.speaker for s in segments}),
+            screenshot_count=len(screenshots),
+            task_count=len(analysis.tasks),
+            concept_count=len(analysis.concepts),
+            json_parsed_cleanly=result.json_parsed_cleanly,
+            chunk_count=result.chunk_count,
+            ollama=OllamaStats(
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                eval_duration_seconds=result.eval_duration_seconds,
+                total_duration_seconds=result.total_duration_seconds,
+                load_duration_seconds=result.load_duration_seconds,
+            ),
+            steps=steps,
+        )
+
+        return pdf_path, metadata
 
     except FileNotFoundError as exc:
-        # Covers missing input file and missing ffmpeg/ffprobe binaries.
         _print_err(f"\nError: {exc}")
         if "ffmpeg" in str(exc).lower() or "ffprobe" in str(exc).lower():
             _print_err(
@@ -208,7 +188,6 @@ def run_pipeline(
         raise
 
     except ConnectionError as exc:
-        # Ollama is not running or refused the connection.
         _print_err(
             f"\nError: Could not connect to Ollama — {exc}\n"
             "Tip: Start Ollama with `ollama serve` and ensure the requested\n"
@@ -231,7 +210,5 @@ def run_pipeline(
         raise
 
     finally:
-        # Clean up the temporary directory.  WeasyPrint embeds images directly
-        # into the PDF, so no intermediate files need to survive past this point.
         if temp_dir is not None and temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)

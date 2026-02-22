@@ -5,7 +5,6 @@ Renders a Jinja2 HTML template and converts it to PDF via WeasyPrint.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass, field
 from datetime import date as _date
 from pathlib import Path
@@ -260,8 +259,6 @@ def generate_pdf(
     output_path = Path(output_path).resolve()
     report_date = date or _date.today().isoformat()
 
-    # -- Progress --------------------------------------------------------
-    print("[debrief] Building transcript entries...", file=sys.stderr)
     entries = _build_transcript_entries(segments, screenshots)
 
     # -- Template --------------------------------------------------------
@@ -277,8 +274,6 @@ def generate_pdf(
     )
     template = env.get_template("report.html")
 
-    # -- Render ----------------------------------------------------------
-    print("[debrief] Rendering HTML template...", file=sys.stderr)
     html_content = template.render(
         date=report_date,
         duration_formatted=_format_duration(duration),
@@ -290,8 +285,6 @@ def generate_pdf(
         entries=entries,
     )
 
-    # -- PDF conversion --------------------------------------------------
-    print("[debrief] Converting HTML to PDF via WeasyPrint...", file=sys.stderr)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # base_url ensures relative paths inside the HTML resolve correctly;
@@ -302,5 +295,4 @@ def generate_pdf(
         base_url=str(templates_dir),
     ).write_pdf(str(output_path))
 
-    print(f"[debrief] PDF written to {output_path}", file=sys.stderr)
     return output_path

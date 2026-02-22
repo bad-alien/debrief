@@ -10,7 +10,6 @@ timestamps already merged in.
 from __future__ import annotations
 
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,11 +54,6 @@ _PYANNOTE_SPEAKER_PREFIX = "SPEAKER_"
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _print_progress(message: str) -> None:
-    """Write a progress message to stderr."""
-    print(message, file=sys.stderr, flush=True)
 
 
 def _resolve_device(device: str) -> str:
@@ -284,7 +278,6 @@ def transcribe(
             _tmp_wav_file.close()  # Close so ffmpeg can write to it on all platforms
             wav_path = Path(_tmp_wav_file.name)
 
-            _print_progress("Extracting audio...")
             _extract_audio(input_path, wav_path)
         else:
             wav_path = input_path
@@ -294,8 +287,6 @@ def transcribe(
         # ------------------------------------------------------------------
         # Step 2: Transcription with faster-whisper
         # ------------------------------------------------------------------
-
-        _print_progress(f"Transcribing with Whisper {model_size} on {resolved_device}...")
 
         from faster_whisper import WhisperModel  # noqa: PLC0415
 
@@ -321,8 +312,6 @@ def transcribe(
         # Step 3: Speaker diarization with pyannote
         # ------------------------------------------------------------------
 
-        _print_progress("Diarizing speakers...")
-
         from pyannote.audio import Pipeline  # noqa: PLC0415
 
         pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
@@ -344,8 +333,6 @@ def transcribe(
         # Step 4 & 5: Merge transcription with diarization, apply names
         # ------------------------------------------------------------------
 
-        _print_progress("Merging transcription and diarization...")
-
         segments: list[Segment] = []
         for seg_start, seg_end, text in whisper_segments:
             if not text:
@@ -362,12 +349,6 @@ def transcribe(
                     text=text,
                 )
             )
-
-        _print_progress(
-            f"Done. {len(segments)} segments, "
-            f"{len({s.speaker for s in segments})} speaker(s), "
-            f"{duration:.1f}s total."
-        )
 
         return segments, duration
 

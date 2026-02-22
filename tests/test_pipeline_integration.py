@@ -32,10 +32,10 @@ def test_full_pipeline(tmp_path: Path) -> None:
 
     from debrief.pipeline import run_pipeline  # noqa: PLC0415
 
-    pdf_path = run_pipeline(
+    pdf_path, _metadata = run_pipeline(
         input_path=video,
         speakers=["Speaker 1", "Speaker 2"],
-        model="mistral",
+        model="hf.co/Qwen/Qwen3-14B-GGUF:Q4_K_M",
         whisper_model="tiny",  # smallest model for faster test runs
         output_path=tmp_path / "integration_test.pdf",
         device="auto",

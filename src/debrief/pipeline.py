@@ -23,6 +23,7 @@ from debrief.screenshots import extract_screenshots
 from debrief.analyze import analyze
 from debrief.pdf import generate_pdf
 from debrief.metadata import OllamaStats, RunMetadata, StepTiming
+from debrief.refine import refine_transcript
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +132,12 @@ def run_pipeline(
 
         analysis = result.analysis
 
-        # Step 6: Generate PDF
+        # Step 6: Refine transcript
+        t0 = time.monotonic()
+        segments = refine_transcript(segments, analysis)
+        steps.append(StepTiming(name="Refine", duration_seconds=time.monotonic() - t0))
+
+        # Step 7: Generate PDF
         t0 = time.monotonic()
         pdf_path = generate_pdf(
             resolved_output,
@@ -142,6 +148,7 @@ def run_pipeline(
             screenshots,
             duration,
             speakers or [],
+            title=analysis.title,
         )
         steps.append(StepTiming(name="Generate PDF", duration_seconds=time.monotonic() - t0))
 

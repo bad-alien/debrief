@@ -226,6 +226,7 @@ def generate_pdf(
     duration: float,
     speakers: list[str],
     date: str | None = None,
+    title: str | None = None,
 ) -> Path:
     """Render a debrief report and write it as a PDF file.
 
@@ -261,6 +262,12 @@ def generate_pdf(
 
     entries = _build_transcript_entries(segments, screenshots)
 
+    # -- Logo ------------------------------------------------------------
+    logo_path_uri = None
+    logo_file = Path(__file__).parent / "static" / "logo.png"
+    if logo_file.exists():
+        logo_path_uri = _path_to_file_uri(logo_file)
+
     # -- Template --------------------------------------------------------
     templates_dir = Path(__file__).parent / "templates"
     if not templates_dir.is_dir():
@@ -274,7 +281,11 @@ def generate_pdf(
     )
     template = env.get_template("report.html")
 
+    report_title = title or "Debrief"
+
     html_content = template.render(
+        title=report_title,
+        logo_path=logo_path_uri,
         date=report_date,
         duration_formatted=_format_duration(duration),
         speakers=speakers,

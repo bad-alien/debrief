@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Debrief{% if date %} — {{ date }}{% endif %}</title>
+  <title>{{ title }}{% if date %} — {{ date }}{% endif %}</title>
   <style>
     /* ------------------------------------------------------------------ */
     /* Reset & base                                                         */
@@ -15,7 +15,7 @@
     }
 
     body {
-      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-family: "Gemunu Libre", "Helvetica Neue", Helvetica, Arial, sans-serif;
       font-size: 10.5pt;
       line-height: 1.6;
       color: #1a1a1a;
@@ -31,7 +31,7 @@
 
       @bottom-center {
         content: "Page " counter(page) " of " counter(pages);
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-family: "Gemunu Libre", "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-size: 8pt;
         color: #888888;
       }
@@ -47,9 +47,32 @@
     /* Header / cover block                                                 */
     /* ------------------------------------------------------------------ */
     .cover {
-      border-bottom: 3px solid #2c3e50;
-      padding-bottom: 18pt;
+      border-bottom: 2px solid #2c3e50;
+      padding-bottom: 16pt;
       margin-bottom: 24pt;
+    }
+
+    .cover__top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20pt;
+      margin-bottom: 10pt;
+    }
+
+    .cover__top-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cover__logo {
+      flex-shrink: 0;
+      max-width: 28mm;
+      max-height: 28mm;
+      height: auto;
+      width: auto;
+      object-fit: contain;
+      margin-top: -2pt;
     }
 
     .cover__eyebrow {
@@ -63,11 +86,11 @@
 
     .cover__title {
       font-size: 26pt;
-      font-weight: 800;
+      font-weight: 700;
       color: #2c3e50;
       letter-spacing: -0.01em;
-      line-height: 1.1;
-      margin-bottom: 14pt;
+      line-height: 1.15;
+      margin-bottom: 0;
     }
 
     .cover__meta {
@@ -172,9 +195,9 @@
     .task-checkbox {
       /* WeasyPrint renders borders reliably */
       display: inline-block;
-      width: 10pt;
-      height: 10pt;
-      min-width: 10pt;
+      width: 12pt;
+      height: 12pt;
+      min-width: 12pt;
       border: 1.5px solid #7f8c8d;
       border-radius: 2pt;
       margin-top: 1.5pt;
@@ -234,9 +257,9 @@
     }
 
     .transcript-entry {
-      margin-bottom: 10pt;
-      padding-bottom: 10pt;
-      border-bottom: 1px solid #f0f0f0;
+      margin-bottom: 14pt;
+      padding-bottom: 14pt;
+      border-bottom: 1px solid #e8e8e8;
     }
 
     .transcript-entry:last-child {
@@ -276,7 +299,7 @@
     /* Screenshots                                                          */
     /* ------------------------------------------------------------------ */
     .screenshot-block {
-      margin: 10pt 0 12pt 0;
+      margin: 16pt 0 14pt 0;
       text-align: center;
       page-break-inside: avoid;
     }
@@ -314,8 +337,15 @@
   <!-- HEADER                                                             -->
   <!-- ================================================================ -->
   <header class="cover">
-    <p class="cover__eyebrow">Confidential &mdash; Internal Use Only</p>
-    <h1 class="cover__title">Debrief</h1>
+    <div class="cover__top">
+      <div class="cover__top-left">
+        <p class="cover__eyebrow">Confidential &mdash; Internal Use Only</p>
+        <h1 class="cover__title">{{ title }}</h1>
+      </div>
+      {% if logo_path %}
+      <img src="{{ logo_path }}" alt="Logo" class="cover__logo" />
+      {% endif %}
+    </div>
 
     <div class="cover__meta">
       {% if date %}

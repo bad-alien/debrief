@@ -9,6 +9,7 @@ timestamps already merged in.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -314,19 +315,27 @@ def transcribe(
 
         from pyannote.audio import Pipeline  # noqa: PLC0415
 
-        pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+        hf_token = os.environ.get("HF_TOKEN")
+        pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1",
+            token=hf_token,
+        )
 
         if resolved_device == "cuda":
             import torch  # noqa: PLC0415
 
             pipeline = pipeline.to(torch.device("cuda"))
 
-        diarization = pipeline(str(wav_path))
+        diarization_output = pipeline(str(wav_path))
+
+        # pyannote 4.x returns a DiarizeOutput dataclass; extract the
+        # Annotation object which carries .itertracks().
+        annotation = getattr(diarization_output, "speaker_diarization", diarization_output)
 
         # Flatten the pyannote annotation into a simple list of turns.
         diarization_turns: list[tuple[float, float, str]] = [
             (turn.start, turn.end, label)
-            for turn, _, label in diarization.itertracks(yield_label=True)
+            for turn, _, label in annotation.itertracks(yield_label=True)
         ]
 
         # ------------------------------------------------------------------

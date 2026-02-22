@@ -22,6 +22,7 @@ from debrief.analyze import analyze
 from debrief.metadata import OllamaStats, RunMetadata, StepTiming
 from debrief.pdf import generate_pdf
 from debrief.pipeline import DEFAULT_MODEL, SUPPORTED_EXTENSIONS, _resolve_output_path
+from debrief.refine import refine_transcript
 from debrief.screenshots import extract_screenshots
 from debrief.transcribe import transcribe
 
@@ -194,6 +195,18 @@ def main(
 
             analysis = result.analysis
 
+            # ---- Refine transcript -----------------------------------------
+            task_id = progress.add_task("Refining transcript...", total=None)
+            t0 = time.monotonic()
+            segments = refine_transcript(segments, analysis)
+            elapsed = time.monotonic() - t0
+            steps.append(StepTiming(name="Refine", duration_seconds=elapsed))
+            progress.update(
+                task_id,
+                description=f"[green]✓[/green] Refined ({_fmt_duration(elapsed)})",
+                completed=True,
+            )
+
             # ---- Generate PDF ----------------------------------------------
             task_id = progress.add_task("Generating PDF...", total=None)
             t0 = time.monotonic()
@@ -206,6 +219,7 @@ def main(
                 screenshots,
                 duration,
                 speaker_list or [],
+                title=analysis.title,
             )
             elapsed = time.monotonic() - t0
             steps.append(StepTiming(name="Generate PDF", duration_seconds=elapsed))

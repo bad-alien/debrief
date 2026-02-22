@@ -55,8 +55,10 @@ class Analysis:
     """
 
     summary: str
+    title: str = ""
     tasks: list[Task] = field(default_factory=list)
     concepts: list[str] = field(default_factory=list)
+    speaker_mapping: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -110,18 +112,22 @@ class SegmentLike(Protocol):
 
 _CHUNK_PROMPT = """\
 Analyze this transcript and return a JSON object with:
+- "title": a short, descriptive title for this meeting/conversation (max 10 words)
 - "summary": a 2-3 paragraph high-level summary
 - "tasks": array of {{"description": "...", "assignee": "..." or null}}
 - "concepts": array of strings (key topics/concepts discussed)
+- "speaker_mapping": {{"Speaker 1": "RealName", ...}} mapping generic labels to real names found in the conversation (empty {{}} if names can't be determined)
 
 Transcript:
 {transcript_text}"""
 
 _MERGE_PROMPT = """\
 Combine these analysis chunks into a single cohesive report. Return JSON with:
+- "title": a short, descriptive title for this meeting/conversation (max 10 words)
 - "summary": unified 2-3 paragraph summary (not just concatenation)
 - "tasks": deduplicated task list as {{"description": "...", "assignee": "..." or null}}
 - "concepts": deduplicated list of key concepts
+- "speaker_mapping": merged {{"Speaker 1": "RealName", ...}} mapping generic labels to real names (empty {{}} if names can't be determined)
 
 Chunk analyses:
 {json_chunks}"""
@@ -214,6 +220,7 @@ def _parse_llm_response(raw: str) -> tuple[dict[str, Any], bool]:
 def _dict_to_analysis(data: dict[str, Any]) -> Analysis:
     """Convert a parsed LLM response dict into an :class:`Analysis` object."""
     summary = str(data.get("summary", "")).strip()
+    title = str(data.get("title", "")).strip()
 
     tasks: list[Task] = []
     for item in data.get("tasks", []):
@@ -231,7 +238,16 @@ def _dict_to_analysis(data: dict[str, Any]) -> Analysis:
         if c:
             concepts.append(c)
 
-    return Analysis(summary=summary, tasks=tasks, concepts=concepts)
+    raw_mapping = data.get("speaker_mapping", {})
+    speaker_mapping: dict[str, str] = {}
+    if isinstance(raw_mapping, dict):
+        for key, value in raw_mapping.items():
+            k = str(key).strip()
+            v = str(value).strip()
+            if k and v:
+                speaker_mapping[k] = v
+
+    return Analysis(summary=summary, title=title, tasks=tasks, concepts=concepts, speaker_mapping=speaker_mapping)
 
 
 def _nanos_to_seconds(nanos: int | None) -> float | None:

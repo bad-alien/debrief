@@ -47,125 +47,77 @@
     /* Header / cover block                                                 */
     /* ------------------------------------------------------------------ */
     .cover {
-      border-bottom: 2px solid #2c3e50;
-      padding-bottom: 16pt;
-      margin-bottom: 24pt;
+      margin-bottom: 18pt;
     }
 
-    .cover__top {
+    .cover__topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20pt;
       margin-bottom: 10pt;
     }
 
-    .cover__top-left {
-      flex: 1;
-      min-width: 0;
-    }
-
     .cover__logo {
-      flex-shrink: 0;
-      max-width: 28mm;
-      max-height: 28mm;
+      max-width: 18mm;
+      max-height: 18mm;
       height: auto;
       width: auto;
       object-fit: contain;
-      margin-top: -2pt;
     }
 
     .cover__eyebrow {
-      font-size: 7.5pt;
+      font-size: 7pt;
       font-weight: 700;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: #7f8c8d;
-      margin-bottom: 4pt;
+      color: #95a5a6;
     }
 
     .cover__title {
-      font-size: 26pt;
+      font-size: 22pt;
       font-weight: 700;
       color: #2c3e50;
       letter-spacing: -0.01em;
-      line-height: 1.15;
-      margin-bottom: 0;
+      line-height: 1.1;
+      margin-bottom: 8pt;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .cover__meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 6pt 24pt;
-    }
-
-    .cover__meta-item {
-      font-size: 9.5pt;
+      gap: 4pt 20pt;
+      font-size: 9pt;
       color: #34495e;
     }
 
-    .cover__meta-item strong {
+    .cover__meta strong {
       color: #1a1a1a;
     }
 
-    .cover__speakers {
-      margin-top: 10pt;
-    }
-
-    .cover__speakers-label {
-      font-size: 8pt;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #7f8c8d;
-      margin-bottom: 5pt;
-    }
-
-    .speaker-pill {
-      display: inline-block;
-      background: #eaf0fb;
-      color: #2c3e50;
-      font-size: 8.5pt;
-      font-weight: 600;
-      padding: 2pt 7pt;
-      border-radius: 20pt;
-      margin: 2pt 3pt 2pt 0;
-      border: 1px solid #c5d5ee;
-    }
-
     /* ------------------------------------------------------------------ */
-    /* Section chrome                                                       */
+    /* Sections — minimal chrome, bold title only                           */
     /* ------------------------------------------------------------------ */
     .section {
-      margin-bottom: 28pt;
-    }
-
-    .section + .section {
-      border-top: 1px solid #e0e0e0;
-      padding-top: 22pt;
-    }
-
-    .section__header {
-      background: #f4f6f7;
-      border-left: 4px solid #2c3e50;
-      padding: 5pt 10pt;
-      margin-bottom: 14pt;
-      border-radius: 0 3pt 3pt 0;
+      margin-bottom: 16pt;
     }
 
     .section__title {
       font-size: 11pt;
       font-weight: 700;
-      letter-spacing: 0.06em;
       text-transform: uppercase;
+      letter-spacing: 0.06em;
       color: #2c3e50;
+      margin-bottom: 6pt;
     }
 
     /* ------------------------------------------------------------------ */
     /* Summary                                                              */
     /* ------------------------------------------------------------------ */
     .summary__body p {
-      margin-bottom: 8pt;
+      margin-bottom: 6pt;
       color: #2c2c2c;
     }
 
@@ -184,8 +136,8 @@
       display: flex;
       align-items: flex-start;
       gap: 8pt;
-      padding: 6pt 0;
-      border-bottom: 1px dotted #dde1e5;
+      padding: 4pt 0;
+      border-bottom: 1px dotted #e0e0e0;
     }
 
     .task-list__item:last-child {
@@ -193,7 +145,6 @@
     }
 
     .task-checkbox {
-      /* WeasyPrint renders borders reliably */
       display: inline-block;
       width: 12pt;
       height: 12pt;
@@ -234,7 +185,7 @@
 
     .concept-list__item {
       break-inside: avoid;
-      padding: 3pt 0 3pt 14pt;
+      padding: 2pt 0 2pt 14pt;
       position: relative;
       font-size: 10pt;
       color: #2c2c2c;
@@ -257,8 +208,8 @@
     }
 
     .transcript-entry {
-      margin-bottom: 14pt;
-      padding-bottom: 14pt;
+      margin-bottom: 12pt;
+      padding-bottom: 12pt;
       border-bottom: 1px solid #e8e8e8;
     }
 
@@ -291,7 +242,7 @@
     .transcript-entry__text {
       font-size: 9.5pt;
       color: #333333;
-      margin-left: 72pt;   /* indent under speaker name */
+      margin-left: 72pt;
       line-height: 1.55;
     }
 
@@ -318,17 +269,6 @@
       color: #95a5a6;
       margin-top: 4pt;
     }
-
-    /* ------------------------------------------------------------------ */
-    /* Utilities                                                            */
-    /* ------------------------------------------------------------------ */
-    .text-muted {
-      color: #7f8c8d;
-    }
-
-    .nowrap {
-      white-space: nowrap;
-    }
   </style>
 </head>
 <body>
@@ -337,48 +277,34 @@
   <!-- HEADER                                                             -->
   <!-- ================================================================ -->
   <header class="cover">
-    <div class="cover__top">
-      <div class="cover__top-left">
-        <p class="cover__eyebrow">Confidential &mdash; Internal Use Only</p>
-        <h1 class="cover__title">{{ title }}</h1>
-      </div>
+    <div class="cover__topbar">
       {% if logo_path %}
       <img src="{{ logo_path }}" alt="Logo" class="cover__logo" />
       {% endif %}
+      <span class="cover__eyebrow">Confidential &mdash; Internal Use Only</span>
     </div>
+
+    <h1 class="cover__title">{{ title }}</h1>
 
     <div class="cover__meta">
       {% if date %}
-      <span class="cover__meta-item">
-        <strong>Date:</strong> {{ date }}
-      </span>
+      <span><strong>Date:</strong> {{ date }}</span>
       {% endif %}
-
       {% if duration_formatted %}
-      <span class="cover__meta-item">
-        <strong>Duration:</strong> {{ duration_formatted }}
-      </span>
+      <span><strong>Duration:</strong> {{ duration_formatted }}</span>
+      {% endif %}
+      {% if speakers %}
+      <span><strong>Attendees:</strong> {{ speakers | join(", ") }}</span>
       {% endif %}
     </div>
-
-    {% if speakers %}
-    <div class="cover__speakers">
-      <p class="cover__speakers-label">Participants</p>
-      {% for speaker in speakers %}
-        <span class="speaker-pill">{{ speaker }}</span>
-      {% endfor %}
-    </div>
-    {% endif %}
   </header>
 
   <!-- ================================================================ -->
   <!-- SUMMARY                                                            -->
   <!-- ================================================================ -->
   {% if summary %}
-  <section class="section section--summary">
-    <div class="section__header">
-      <h2 class="section__title">Summary</h2>
-    </div>
+  <section class="section">
+    <h2 class="section__title">Summary</h2>
     <div class="summary__body">
       {% for paragraph in summary_paragraphs %}
         <p>{{ paragraph }}</p>
@@ -391,10 +317,8 @@
   <!-- ACTION ITEMS                                                       -->
   <!-- ================================================================ -->
   {% if tasks %}
-  <section class="section section--tasks">
-    <div class="section__header">
-      <h2 class="section__title">Action Items</h2>
-    </div>
+  <section class="section">
+    <h2 class="section__title">Action Items</h2>
     <ul class="task-list">
       {% for task in tasks %}
       <li class="task-list__item">
@@ -415,10 +339,8 @@
   <!-- KEY CONCEPTS                                                       -->
   <!-- ================================================================ -->
   {% if concepts %}
-  <section class="section section--concepts">
-    <div class="section__header">
-      <h2 class="section__title">Key Concepts</h2>
-    </div>
+  <section class="section">
+    <h2 class="section__title">Key Concepts</h2>
     <ul class="concept-list">
       {% for concept in concepts %}
       <li class="concept-list__item">{{ concept }}</li>
@@ -432,9 +354,7 @@
   <!-- ================================================================ -->
   {% if entries %}
   <section class="section section--transcript">
-    <div class="section__header">
-      <h2 class="section__title">Full Transcript</h2>
-    </div>
+    <h2 class="section__title">Full Transcript</h2>
 
     {% for entry in entries %}
     <article class="transcript-entry">

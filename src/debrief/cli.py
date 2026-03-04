@@ -208,7 +208,7 @@ def main(
             # Use CLI --speakers if provided, otherwise use LLM-discovered names
             attendees = speaker_list or []
             if not attendees and analysis.speaker_mapping:
-                attendees = list(analysis.speaker_mapping.values())
+                attendees = list(dict.fromkeys(analysis.speaker_mapping.values()))
 
             pdf_path = generate_pdf(
                 resolved_output,

@@ -12,6 +12,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -121,8 +123,10 @@ def _has_video_stream(path: Path) -> bool:
     """
     cmd: list[str] = [
         "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
         "-show_streams",
         str(path),
     ]
@@ -143,6 +147,63 @@ def _has_video_stream(path: Path) -> bool:
 
     streams: list[dict] = probe_data.get("streams", [])
     return any(s.get("codec_type") == "video" for s in streams)
+
+
+# ---------------------------------------------------------------------------
+# Dark-frame detection helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_dark_frame(image_path: Path, threshold: float = 20.0) -> bool:
+    """Return True if the image at *image_path* is predominantly black/dark.
+
+    Converts the image to grayscale and computes the mean pixel value (0–255).
+    Returns True when the mean is below *threshold*, indicating a dark frame.
+
+    Args:
+        image_path: Path to the image file to evaluate.
+        threshold: Mean pixel value below which a frame is considered dark.
+
+    Returns:
+        True if the frame is dark, False otherwise.
+    """
+    img = Image.open(image_path).convert("L")
+    pixels = list(img.getdata())
+    mean = sum(pixels) / len(pixels) if pixels else 0.0
+    return mean < threshold
+
+
+def _extract_valid_frame(video_path: Path, timestamp: float, output_path: Path) -> bool:
+    """Extract a non-dark frame near *timestamp*, retrying up to +3 seconds.
+
+    Calls :func:`_extract_frame` at *timestamp*, then checks brightness with
+    :func:`_is_dark_frame`.  If the frame is dark, retries at timestamp+1s,
+    +2s, and +3s.  Cleans up the file and returns False when all attempts
+    produce dark frames.
+
+    Args:
+        video_path: Path to the source video file.
+        timestamp: Initial time in seconds at which to attempt extraction.
+        output_path: Destination path for the saved JPEG image.
+
+    Returns:
+        True when a non-dark frame is saved to *output_path*, False otherwise.
+    """
+    for offset in (0, 1, 2, 3):
+        attempt_ts = timestamp + offset
+        try:
+            _extract_frame(video_path, attempt_ts, output_path)
+        except FileNotFoundError:
+            raise
+        except subprocess.CalledProcessError:
+            continue
+        if not _is_dark_frame(output_path):
+            return True
+
+    # All attempts were dark — clean up and signal failure
+    if output_path.exists():
+        output_path.unlink()
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -168,13 +229,18 @@ def _extract_frame(video_path: Path, timestamp: float, output_path: Path) -> Non
     """
     cmd: list[str] = [
         "ffmpeg",
-        "-ss", str(timestamp),
-        "-i", str(video_path),
-        "-frames:v", "1",
-        "-q:v", "2",
+        "-ss",
+        str(timestamp),
+        "-i",
+        str(video_path),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
         str(output_path),
-        "-y",       # overwrite without prompting
-        "-loglevel", "error",
+        "-y",  # overwrite without prompting
+        "-loglevel",
+        "error",
     ]
     subprocess.run(cmd, check=True)
 
@@ -301,10 +367,11 @@ def extract_screenshots(
         output_path = output_dir / filename
 
         try:
-            _extract_frame(video_path, timestamp, output_path)
+            valid = _extract_valid_frame(video_path, timestamp, output_path)
         except FileNotFoundError:
             raise
-        except subprocess.CalledProcessError:
+
+        if not valid:
             continue
 
         screenshots.append(

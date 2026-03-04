@@ -20,6 +20,7 @@ from pathlib import Path
 # Public types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Segment:
     """A single speaker-attributed transcript segment.
@@ -41,12 +42,8 @@ class Segment:
 # Constants
 # ---------------------------------------------------------------------------
 
-VIDEO_EXTENSIONS: frozenset[str] = frozenset(
-    {".mp4", ".mkv", ".webm", ".avi", ".mov"}
-)
-AUDIO_EXTENSIONS: frozenset[str] = frozenset(
-    {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
-)
+VIDEO_EXTENSIONS: frozenset[str] = frozenset({".mp4", ".mkv", ".webm", ".avi", ".mov"})
+AUDIO_EXTENSIONS: frozenset[str] = frozenset({".wav", ".mp3", ".ogg", ".flac", ".m4a"})
 
 # pyannote speaker label format produced by the 3.x pipeline
 _PYANNOTE_SPEAKER_PREFIX = "SPEAKER_"
@@ -93,12 +90,16 @@ def _extract_audio(input_path: Path, dest_wav: Path) -> None:
     """
     cmd = [
         "ffmpeg",
-        "-y",                     # overwrite output without prompting
-        "-i", str(input_path),
-        "-vn",                    # drop video stream
-        "-ac", "1",               # mono
-        "-ar", "16000",           # 16 kHz — optimal for Whisper
-        "-sample_fmt", "s16",     # 16-bit signed PCM
+        "-y",  # overwrite output without prompting
+        "-i",
+        str(input_path),
+        "-vn",  # drop video stream
+        "-ac",
+        "1",  # mono
+        "-ar",
+        "16000",  # 16 kHz — optimal for Whisper
+        "-sample_fmt",
+        "s16",  # 16-bit signed PCM
         str(dest_wav),
     ]
 
@@ -110,9 +111,7 @@ def _extract_audio(input_path: Path, dest_wav: Path) -> None:
 
     if result.returncode != 0:
         error_output = result.stderr.decode(errors="replace")
-        raise RuntimeError(
-            f"ffmpeg failed with exit code {result.returncode}.\n{error_output}"
-        )
+        raise RuntimeError(f"ffmpeg failed with exit code {result.returncode}.\n{error_output}")
 
 
 def _get_audio_duration(wav_path: Path) -> float:
@@ -126,9 +125,12 @@ def _get_audio_duration(wav_path: Path) -> float:
     """
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         str(wav_path),
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -155,7 +157,7 @@ def _label_for_speaker(
     index: int | None = None
     if pyannote_label.startswith(_PYANNOTE_SPEAKER_PREFIX):
         try:
-            index = int(pyannote_label[len(_PYANNOTE_SPEAKER_PREFIX):])
+            index = int(pyannote_label[len(_PYANNOTE_SPEAKER_PREFIX) :])
         except ValueError:
             pass
 
@@ -206,7 +208,7 @@ def _assign_speaker(
 def transcribe(
     input_path: str | Path,
     speakers: list[str] | None = None,
-    model_size: str = "large-v3",
+    model_size: str = "large-v3-turbo",
     device: str = "auto",
 ) -> tuple[list[Segment], float]:
     """Transcribe a recording and return labelled speaker segments.
@@ -273,9 +275,7 @@ def transcribe(
         needs_conversion = is_video or suffix != ".wav"
 
         if needs_conversion:
-            _tmp_wav_file = tempfile.NamedTemporaryFile(
-                suffix=".wav", delete=False
-            )
+            _tmp_wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             _tmp_wav_file.close()  # Close so ffmpeg can write to it on all platforms
             wav_path = Path(_tmp_wav_file.name)
 
@@ -305,8 +305,7 @@ def transcribe(
         # Materialise the lazy iterator into a plain list so we can iterate
         # it a second time for the merge step.
         whisper_segments: list[tuple[float, float, str]] = [
-            (seg.start, seg.end, seg.text.strip())
-            for seg in whisper_segments_iter
+            (seg.start, seg.end, seg.text.strip()) for seg in whisper_segments_iter
         ]
 
         # ------------------------------------------------------------------

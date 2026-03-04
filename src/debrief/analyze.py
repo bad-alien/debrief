@@ -5,12 +5,13 @@ summary, action items with optional assignees, and key concepts discussed.
 
 Chunking strategy
 -----------------
-- Estimate token count at ~0.75 tokens per word.
-- If the full transcript fits under 6 000 estimated tokens, process in one
-  shot.
-- Otherwise split at Segment boundaries into chunks of ~6 000 estimated tokens
-  each, request a partial analysis per chunk, then do a final merge pass that
-  asks the LLM to synthesise the chunk results into a single cohesive report.
+- Estimate token count at ~1.5 tokens per word (conservative for Qwen3).
+- If the full transcript fits under SINGLE_PASS_TOKEN_LIMIT - PROMPT_OVERHEAD_TOKENS
+  estimated tokens, process in one shot.
+- Otherwise split at Segment boundaries into chunks of ~CHUNK_TOKEN_LIMIT -
+  PROMPT_OVERHEAD_TOKENS estimated tokens each, request a partial analysis per
+  chunk, then do a final merge pass that asks the LLM to synthesise the chunk
+  results into a single cohesive report.
 """
 
 from __future__ import annotations
@@ -26,9 +27,24 @@ import ollama
 # Public data structures
 # ---------------------------------------------------------------------------
 
-TOKENS_PER_WORD: float = 0.75
-CHUNK_TOKEN_LIMIT: int = 6_000
-SINGLE_PASS_TOKEN_LIMIT: int = 6_000
+# ---------------------------------------------------------------------------
+# Chunking budget
+# ---------------------------------------------------------------------------
+# Qwen3-14B context window: 32 768 tokens.
+# Budget per LLM call:
+#   ~1 500 tokens  prompt instructions / JSON schema
+#   ~8 000 tokens  transcript content  (estimated; actual ≈ 1.5-2.3× higher)
+#   ~4 000 tokens  reserved for completion
+#   ────────────
+#   ~13 500 tokens estimated → ~18-22K actual → safely within 32K
+#
+# TOKENS_PER_WORD deliberately over-estimates vs English averages (~0.75)
+# because Qwen's tokenizer splits non-English words and code more aggressively.
+# ---------------------------------------------------------------------------
+TOKENS_PER_WORD: float = 1.5
+PROMPT_OVERHEAD_TOKENS: int = 1_500
+CHUNK_TOKEN_LIMIT: int = 8_000
+SINGLE_PASS_TOKEN_LIMIT: int = 8_000
 
 
 @dataclass
@@ -111,23 +127,87 @@ class SegmentLike(Protocol):
 # ---------------------------------------------------------------------------
 
 _CHUNK_PROMPT = """\
-Analyze this transcript and return a JSON object with:
-- "title": a short, descriptive title for this meeting/conversation (max 10 words)
-- "summary": a 2-3 paragraph high-level summary
-- "tasks": array of {{"description": "...", "assignee": "..." or null}}
-- "concepts": array of strings (key topics/concepts discussed)
-- "speaker_mapping": {{"Speaker 1": "RealName", ...}} mapping generic labels to real names found in the conversation (empty {{}} if names can't be determined)
+You are an expert meeting analyst. You will be given a timestamped transcript of a recorded \
+meeting or conversation. Your task is to analyze the transcript and extract structured \
+information from it.
+
+Return ONLY a valid JSON object with no additional text or explanation. Use this exact schema:
+
+{{
+  "title": "Short descriptive title (max 10 words)",
+  "summary": "Paragraph 1: what was discussed and why. Paragraph 2: key decisions made. \
+Paragraph 3: what was demonstrated or shown (omit if nothing was demonstrated).",
+  "tasks": [
+    {{"description": "Concrete action item or commitment", "assignee": "PersonName or null", \
+"deadline": "mentioned deadline or null"}}
+  ],
+  "concepts": ["key topic 1", "key topic 2"],
+  "speaker_mapping": {{"Speaker 1": "RealName", "Speaker 2": "RealName"}}
+}}
+
+Guidelines:
+
+SPEAKER MAPPING — map generic speaker labels (e.g. Speaker 1, Speaker 2) to real names:
+- Look for people being addressed by name: "hey Andy, what do you think?" means the person \
+being addressed is Andy, NOT the speaker saying it.
+- Look for self-introductions: "I'm Sarah", "this is Mike from engineering".
+- Use conversational context clues: if Speaker 2 says "as I mentioned, I'm leading the \
+backend team" and someone calls them "Alex", map Speaker 2 to Alex.
+- Aim to map ALL speakers. If a speaker's name genuinely cannot be determined from the \
+transcript, omit them from the mapping rather than guessing.
+
+SUMMARY — write a coherent narrative, not bullet points:
+- Paragraph 1: what was discussed and the context/purpose of the meeting.
+- Paragraph 2: key decisions that were made or agreed upon.
+- Paragraph 3: anything that was demonstrated, shown, or walked through (skip if none).
+
+TASKS — only extract actual commitments and action items:
+- Include only concrete things someone agreed or was asked to do.
+- Do NOT include general discussion topics or things already done.
+- Include a deadline if one was mentioned; otherwise set "deadline" to null.
+- Set "assignee" to the real name of the person responsible, or null if unassigned.
+
+CONCEPTS — list the key topics, technologies, or themes discussed (max 15 items).
 
 Transcript:
 {transcript_text}"""
 
 _MERGE_PROMPT = """\
-Combine these analysis chunks into a single cohesive report. Return JSON with:
-- "title": a short, descriptive title for this meeting/conversation (max 10 words)
-- "summary": unified 2-3 paragraph summary (not just concatenation)
-- "tasks": deduplicated task list as {{"description": "...", "assignee": "..." or null}}
-- "concepts": deduplicated list of key concepts
-- "speaker_mapping": merged {{"Speaker 1": "RealName", ...}} mapping generic labels to real names (empty {{}} if names can't be determined)
+You are an expert meeting analyst. You have been given multiple partial analyses of sequential \
+chunks of a single meeting transcript. Combine them into one unified, cohesive report.
+
+Return ONLY a valid JSON object with no additional text or explanation. Use this exact schema:
+
+{{
+  "title": "Short descriptive title (max 10 words)",
+  "summary": "Unified narrative summary across all chunks",
+  "tasks": [
+    {{"description": "Concrete action item", "assignee": "PersonName or null", \
+"deadline": "mentioned deadline or null"}}
+  ],
+  "concepts": ["key topic 1", "key topic 2"],
+  "speaker_mapping": {{"Speaker 1": "RealName", "Speaker 2": "RealName"}}
+}}
+
+Merging guidelines:
+
+SPEAKER MAPPING — resolve conflicts across chunks carefully:
+- If different chunks assign different names to the same speaker label, prefer the mapping \
+from the chunk where the name was explicitly spoken (introduced or directly addressed).
+- Never include a speaker label in the mapping unless at least one chunk has a confident \
+name for them.
+
+SUMMARY — write a single coherent narrative, not a concatenation:
+- Describe the arc of the whole meeting: what it was about, what was decided, and what \
+was shown or demonstrated.
+- Do not simply join the chunk summaries; synthesize them into flowing paragraphs.
+
+TASKS — deduplicate intelligently:
+- If the same action item appears in multiple chunks (possibly with slight wording \
+differences), keep only one entry.
+- Preserve the most specific version (with assignee and/or deadline if available).
+
+CONCEPTS — merge and deduplicate all concept lists; keep only the 10-15 most important topics.
 
 Chunk analyses:
 {json_chunks}"""
@@ -145,11 +225,13 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _format_transcript(segments: list[SegmentLike]) -> str:
-    """Format transcript segments as ``[Speaker]: text`` lines."""
+    """Format transcript segments as ``[HH:MM:SS] Speaker: text`` lines."""
     lines: list[str] = []
     for seg in segments:
         speaker = seg.speaker or "Unknown"
-        lines.append(f"[{speaker}]: {seg.text.strip()}")
+        h, remainder = divmod(int(seg.start), 3600)
+        m, s = divmod(remainder, 60)
+        lines.append(f"[{h:02d}:{m:02d}:{s:02d}] {speaker}: {seg.text.strip()}")
     return "\n".join(lines)
 
 
@@ -247,7 +329,13 @@ def _dict_to_analysis(data: dict[str, Any]) -> Analysis:
             if k and v:
                 speaker_mapping[k] = v
 
-    return Analysis(summary=summary, title=title, tasks=tasks, concepts=concepts, speaker_mapping=speaker_mapping)
+    return Analysis(
+        summary=summary,
+        title=title,
+        tasks=tasks,
+        concepts=concepts,
+        speaker_mapping=speaker_mapping,
+    )
 
 
 def _nanos_to_seconds(nanos: int | None) -> float | None:
@@ -369,7 +457,7 @@ def analyze(
     all_calls: list[_LLMCall] = []
     all_clean = True
 
-    if total_tokens <= SINGLE_PASS_TOKEN_LIMIT:
+    if total_tokens <= SINGLE_PASS_TOKEN_LIMIT - PROMPT_OVERHEAD_TOKENS:
         data, clean, call = _analyze_chunk(segments, model)
         all_calls.append(call)
         all_clean = clean
@@ -377,7 +465,9 @@ def analyze(
         analysis = _dict_to_analysis(data)
     else:
         # Multi-chunk path
-        chunks = _split_into_chunks(segments, token_limit=CHUNK_TOKEN_LIMIT)
+        chunks = _split_into_chunks(
+            segments, token_limit=CHUNK_TOKEN_LIMIT - PROMPT_OVERHEAD_TOKENS
+        )
         chunk_count = len(chunks)
 
         chunk_results: list[dict[str, Any]] = []

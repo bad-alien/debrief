@@ -56,10 +56,7 @@ def _validate_input(input_path: Path) -> None:
     suffix = input_path.suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-        raise ValueError(
-            f"Unsupported file format '{suffix}'.\n"
-            f"Supported formats: {supported}"
-        )
+        raise ValueError(f"Unsupported file format '{suffix}'.\nSupported formats: {supported}")
 
 
 def _resolve_output_path(input_path: Path, output_path: str | Path | None) -> Path:
@@ -81,7 +78,7 @@ def run_pipeline(
     input_path: str | Path,
     speakers: list[str] | None = None,
     model: str = DEFAULT_MODEL,
-    whisper_model: str = "large-v3",
+    whisper_model: str = "large-v3-turbo",
     output_path: str | Path | None = None,
     device: str = "auto",
 ) -> tuple[Path, RunMetadata]:
@@ -211,9 +208,7 @@ def run_pipeline(
                 "     and that you have a recent ffmpeg version installed."
             )
         elif "ollama" in error_text or "model" in error_text:
-            _print_err(
-                f"Tip: Make sure the model is available: ollama pull {model}"
-            )
+            _print_err(f"Tip: Make sure the model is available: ollama pull {model}")
         raise
 
     finally:

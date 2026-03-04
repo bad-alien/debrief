@@ -33,7 +33,7 @@ class Segment(Protocol):
     """A single diarised transcript segment."""
 
     start: float  # seconds
-    end: float    # seconds
+    end: float  # seconds
     speaker: str
     text: str
 
@@ -271,9 +271,7 @@ def generate_pdf(
     # -- Template --------------------------------------------------------
     templates_dir = Path(__file__).parent / "templates"
     if not templates_dir.is_dir():
-        raise FileNotFoundError(
-            f"Templates directory not found: {templates_dir}"
-        )
+        raise FileNotFoundError(f"Templates directory not found: {templates_dir}")
 
     env = Environment(
         loader=FileSystemLoader(str(templates_dir)),

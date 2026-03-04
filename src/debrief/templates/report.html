@@ -208,21 +208,14 @@
     }
 
     .transcript-entry {
-      margin-bottom: 12pt;
-      padding-bottom: 12pt;
-      border-bottom: 1px solid #e8e8e8;
-    }
-
-    .transcript-entry:last-child {
-      border-bottom: none;
-      margin-bottom: 0;
-    }
-
-    .transcript-entry__meta {
-      display: flex;
-      align-items: baseline;
-      gap: 6pt;
       margin-bottom: 3pt;
+      font-size: 9.5pt;
+      color: #333333;
+      line-height: 1.55;
+    }
+
+    .transcript-entry--new-speaker {
+      margin-top: 10pt;
     }
 
     .transcript-entry__timestamp {
@@ -230,20 +223,12 @@
       font-size: 8.5pt;
       color: #95a5a6;
       white-space: nowrap;
-      flex-shrink: 0;
     }
 
     .transcript-entry__speaker {
       font-size: 9.5pt;
       font-weight: 700;
       color: #2c3e50;
-    }
-
-    .transcript-entry__text {
-      font-size: 9.5pt;
-      color: #333333;
-      margin-left: 72pt;
-      line-height: 1.55;
     }
 
     /* ------------------------------------------------------------------ */
@@ -256,7 +241,7 @@
     }
 
     .screenshot-block img {
-      max-width: 80%;
+      max-width: 60%;
       height: auto;
       border: 1px solid #d0d5db;
       border-radius: 4pt;
@@ -357,12 +342,10 @@
     <h2 class="section__title">Full Transcript</h2>
 
     {% for entry in entries %}
-    <article class="transcript-entry">
-      <div class="transcript-entry__meta">
-        <span class="transcript-entry__timestamp">[{{ entry.timestamp }}]</span>
-        <span class="transcript-entry__speaker">{{ entry.speaker }}:</span>
-      </div>
-      <p class="transcript-entry__text">{{ entry.text }}</p>
+    <article class="transcript-entry{% if loop.previtem is defined and loop.previtem.speaker != entry.speaker %} transcript-entry--new-speaker{% endif %}">
+      <span class="transcript-entry__timestamp">[{{ entry.timestamp }}]</span>
+      <span class="transcript-entry__speaker"> {{ entry.speaker }}:</span>
+      {{ entry.text }}
 
       {% if entry.screenshot_path %}
       <div class="screenshot-block">

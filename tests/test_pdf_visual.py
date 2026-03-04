@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from debrief.pdf import (
@@ -108,8 +107,13 @@ class TestFullReport:
 
         # Capture HTML rendering for visual review
         html = _render_html(
-            summary, sample_tasks, sample_concepts,
-            sample_segments, sample_screenshots, 130.0, speakers,
+            summary,
+            sample_tasks,
+            sample_concepts,
+            sample_segments,
+            sample_screenshots,
+            130.0,
+            speakers,
         )
         snapshot = visual_validator.screenshot_html(html, "full_report")
         if snapshot:
@@ -226,7 +230,13 @@ class TestWithScreenshots:
         _assert_pdf_valid(result)
 
         html = _render_html(
-            summary, [], [], sample_segments, sample_screenshots, 130.0, speakers,
+            summary,
+            [],
+            [],
+            sample_segments,
+            sample_screenshots,
+            130.0,
+            speakers,
         )
         snapshot = visual_validator.screenshot_html(html, "with_screenshots")
         if snapshot:

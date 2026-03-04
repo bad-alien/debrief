@@ -52,10 +52,7 @@ def _validate_input(input_path: Path) -> None:
     suffix = input_path.suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-        raise ValueError(
-            f"Unsupported file format '{suffix}'.\n"
-            f"Supported formats: {supported}"
-        )
+        raise ValueError(f"Unsupported file format '{suffix}'.\nSupported formats: {supported}")
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -81,7 +78,7 @@ def _fmt_duration(seconds: float) -> str:
 @click.option(
     "--whisper-model",
     "-w",
-    default="large-v3",
+    default="large-v3-turbo",
     show_default=True,
     help="Whisper model size",
 )
@@ -175,9 +172,7 @@ def main(
             count_msg = f"{len(screenshots)} extracted, " if screenshots else ""
             progress.update(
                 task_id,
-                description=(
-                    f"[green]✓[/green] Screenshots ({count_msg}{_fmt_duration(elapsed)})"
-                ),
+                description=(f"[green]✓[/green] Screenshots ({count_msg}{_fmt_duration(elapsed)})"),
                 completed=True,
             )
 
@@ -210,6 +205,11 @@ def main(
             # ---- Generate PDF ----------------------------------------------
             task_id = progress.add_task("Generating PDF...", total=None)
             t0 = time.monotonic()
+            # Use CLI --speakers if provided, otherwise use LLM-discovered names
+            attendees = speaker_list or []
+            if not attendees and analysis.speaker_mapping:
+                attendees = list(analysis.speaker_mapping.values())
+
             pdf_path = generate_pdf(
                 resolved_output,
                 analysis.summary,
@@ -218,7 +218,7 @@ def main(
                 segments,
                 screenshots,
                 duration,
-                speaker_list or [],
+                attendees,
                 title=analysis.title,
             )
             elapsed = time.monotonic() - t0

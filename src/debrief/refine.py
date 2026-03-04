@@ -10,8 +10,41 @@ Applies two transformations to the raw transcript after LLM analysis:
 
 from __future__ import annotations
 
+import re
+
 from debrief.analyze import Analysis
 from debrief.transcribe import Segment
+
+
+def _normalize_speaker_key(key: str) -> str:
+    """Normalize a speaker label to a canonical form for matching.
+
+    Handles variants the LLM may produce:
+      ``Speaker 1``, ``Speaker_1``, ``SPEAKER_01``, ``SPEAKER_1``,
+      ``speaker 1``, ``Speaker1`` → all normalize to ``speaker_1``.
+    """
+    k = key.strip().lower()
+    k = k.replace(" ", "_")
+    # Collapse "speaker_01" → "speaker_1" (strip leading zeros)
+    k = re.sub(r"_0*(\d+)$", lambda m: f"_{m.group(1)}", k)
+    # Handle "speaker1" (no separator) → "speaker_1"
+    k = re.sub(r"^(speaker)(\d+)$", r"\1_\2", k)
+    return k
+
+
+def _build_normalized_mapping(speaker_mapping: dict[str, str]) -> dict[str, str]:
+    """Build a lookup from normalized speaker keys to real names.
+
+    Also includes the original keys so exact matches still work.
+    """
+    lookup: dict[str, str] = {}
+    for key, name in speaker_mapping.items():
+        name = name.strip()
+        if not name:
+            continue
+        lookup[key] = name
+        lookup[_normalize_speaker_key(key)] = name
+    return lookup
 
 
 def rename_speakers(
@@ -19,6 +52,9 @@ def rename_speakers(
     speaker_mapping: dict[str, str],
 ) -> list[Segment]:
     """Return a copy of *segments* with speaker labels replaced per *speaker_mapping*.
+
+    Uses normalized key matching so that ``Speaker 1``, ``Speaker_1``,
+    ``SPEAKER_01`` etc. all resolve to the same real name.
 
     Args:
         segments: Original transcript segments.
@@ -31,11 +67,18 @@ def rename_speakers(
     if not speaker_mapping:
         return list(segments)
 
+    lookup = _build_normalized_mapping(speaker_mapping)
+
+    def _resolve(label: str) -> str:
+        if label in lookup:
+            return lookup[label]
+        return lookup.get(_normalize_speaker_key(label), label)
+
     return [
         Segment(
             start=seg.start,
             end=seg.end,
-            speaker=speaker_mapping.get(seg.speaker, seg.speaker),
+            speaker=_resolve(seg.speaker),
             text=seg.text,
         )
         for seg in segments
